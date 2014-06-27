@@ -3,8 +3,8 @@
  *
  *****************************************************************************
  * Copyright (c) 2003-2007, Valient Gough
- * 
- * This program is free software; you can distribute it and/or modify it under 
+ *
+ * This program is free software; you can distribute it and/or modify it under
  * the terms of the GNU General Public License (GPL), as published by the Free
  * Software Foundation; either version 2 of the License, or (at your option)
  * any later version.
@@ -92,7 +92,7 @@ static int withCipherPath( const char *opName, const char *path,
 	rLog(Info, "%s %s", opName, cyName.c_str());
 
 	res = op( ctx, cyName, data );
-	
+
 	if(res == -1)
 	{
 	    int eno = errno;
@@ -111,7 +111,7 @@ static int withCipherPath( const char *opName, const char *path,
 // helper function -- apply a functor to a node
 template<typename T>
 static int withFileNode( const char *opName,
-	const char *path, struct fuse_file_info *fi, 
+	const char *path, struct fuse_file_info *fi,
 	int (*op)(FileNode *, T data ), T data )
 {
     EncFS_Context *ctx = context();
@@ -226,7 +226,7 @@ int encfs_getdir(const char *path, fuse_dirh_t h, fuse_dirfil_t filler)
 		    break;
 
 		name = dt.nextPlaintextName( &fileType, &inode );
-	    } 
+	    }
 	} else
 	{
 	    rInfo("getdir request invalid, path: '%s'", path);
@@ -272,7 +272,7 @@ int encfs_mknod(const char *path, mode_t mode, dev_t rdev)
 	    // try again using the parent dir's group
 	    string parent = fnode->plaintextParent();
 	    rInfo("trying public filesystem workaround for %s", parent.c_str());
-	    shared_ptr<FileNode> dnode = 
+	    shared_ptr<FileNode> dnode =
 		FSRoot->lookupNode( parent.c_str(), "mknod" );
 
 	    struct stat st;
@@ -312,7 +312,7 @@ int encfs_mkdir(const char *path, mode_t mode)
 	{
 	    // try again using the parent dir's group
 	    string parent = parentDirectory( path );
-	    shared_ptr<FileNode> dnode = 
+	    shared_ptr<FileNode> dnode =
 		FSRoot->lookupNode( parent.c_str(), "mkdir" );
 
 	    struct stat st;
@@ -398,7 +398,7 @@ int _do_readlink(EncFS_Context *ctx, const string &cyName,
 
 int encfs_readlink(const char *path, char *buf, size_t size)
 {
-    return withCipherPath( "readlink", path, _do_readlink, 
+    return withCipherPath( "readlink", path, _do_readlink,
 	    make_tuple(buf, size) );
 }
 
@@ -416,7 +416,7 @@ int encfs_symlink(const char *from, const char *to)
 	// allow fully qualified names in symbolic links.
 	string fromCName = FSRoot->relativeCipherPath( from );
 	string toCName = FSRoot->cipherPath( to );
-	
+
 	rLog(Info, "symlink %s -> %s", fromCName.c_str(), toCName.c_str());
 
 	// use setfsuid / setfsgid so that the new link will be owned by the
@@ -489,7 +489,11 @@ int encfs_rename(const char *from, const char *to)
 
 int _do_chmod(EncFS_Context *, const string &cipherPath, mode_t mode)
 {
+#ifdef __APPLE__
+    return lchmod( cipherPath.c_str(), mode );
+#else
     return chmod( cipherPath.c_str(), mode );
+#endif /* __APPLE__ */
 }
 
 int encfs_chmod(const char *path, mode_t mode)
@@ -497,7 +501,7 @@ int encfs_chmod(const char *path, mode_t mode)
     return withCipherPath( "chmod", path, _do_chmod, mode );
 }
 
-int _do_chown(EncFS_Context *, const string &cyName, 
+int _do_chown(EncFS_Context *, const string &cyName,
 	tuple<uid_t, gid_t> data)
 {
     int res = lchown( cyName.c_str(), data.get<0>(), data.get<1>() );
@@ -535,7 +539,7 @@ int encfs_utime(const char *path, struct utimbuf *buf)
     return withCipherPath( "utime", path, _do_utime, buf );
 }
 
-int _do_utimens(EncFS_Context *, const string &cyName, 
+int _do_utimens(EncFS_Context *, const string &cyName,
 	const struct timespec ts[2])
 {
     struct timeval tv[2];
@@ -564,12 +568,12 @@ int encfs_open(const char *path, struct fuse_file_info *file)
 
     try
     {
-	shared_ptr<FileNode> fnode = 
+	shared_ptr<FileNode> fnode =
 	    FSRoot->openNode( path, "open", file->flags, &res );
 
 	if(fnode)
 	{
-	    rLog(Info, "encfs_open for %s, flags %i", fnode->cipherName(), 
+	    rLog(Info, "encfs_open for %s, flags %i", fnode->cipherName(),
 		    file->flags);
 
 	    if( res >= 0 )
@@ -684,7 +688,7 @@ int encfs_statfs(const char *path, struct statvfs *st)
 
 	rLog(Info, "doing statfs of %s", cyName.c_str());
 	res = statvfs( cyName.c_str(), st );
-	if(!res) 
+	if(!res)
 	{
 	    // adjust maximum name length..
 	    st->f_namemax     = 6 * (st->f_namemax - 2) / 8; // approx..
@@ -703,31 +707,31 @@ int encfs_statfs(const char *path, struct statvfs *st)
 
 
 #ifdef XATTR_ADD_OPT
-int _do_setxattr(EncFS_Context *, const string &cyName, 
+int _do_setxattr(EncFS_Context *, const string &cyName,
 	tuple<const char *, const char *, size_t, uint32_t> data)
 {
     int options = 0;
-    return ::setxattr( cyName.c_str(), data.get<0>(), data.get<1>(), 
+    return ::setxattr( cyName.c_str(), data.get<0>(), data.get<1>(),
 	    data.get<2>(), data.get<3>(), options );
 }
 int encfs_setxattr( const char *path, const char *name,
 	const char *value, size_t size, int flags, uint32_t position )
 {
     (void)flags;
-    return withCipherPath( "setxattr", path, _do_setxattr, 
+    return withCipherPath( "setxattr", path, _do_setxattr,
 	    make_tuple(name, value, size, position) );
 }
 #else
-int _do_setxattr(EncFS_Context *, const string &cyName, 
+int _do_setxattr(EncFS_Context *, const string &cyName,
 	tuple<const char *, const char *, size_t, int> data)
 {
-    return ::setxattr( cyName.c_str(), data.get<0>(), data.get<1>(), 
+    return ::setxattr( cyName.c_str(), data.get<0>(), data.get<1>(),
 	    data.get<2>(), data.get<3>() );
 }
 int encfs_setxattr( const char *path, const char *name,
 	const char *value, size_t size, int flags )
 {
-    return withCipherPath( "setxattr", path, _do_setxattr, 
+    return withCipherPath( "setxattr", path, _do_setxattr,
 	    make_tuple(name, value, size, flags) );
 }
 #endif
@@ -738,26 +742,26 @@ int _do_getxattr(EncFS_Context *, const string &cyName,
 	tuple<const char *, void *, size_t, uint32_t> data)
 {
     int options = 0;
-    return ::getxattr( cyName.c_str(), data.get<0>(), 
+    return ::getxattr( cyName.c_str(), data.get<0>(),
 	    data.get<1>(), data.get<2>(), data.get<3>(), options );
 }
 int encfs_getxattr( const char *path, const char *name,
 	char *value, size_t size, uint32_t position )
 {
-    return withCipherPath( "getxattr", path, _do_getxattr, 
+    return withCipherPath( "getxattr", path, _do_getxattr,
 	    make_tuple(name, (void *)value, size, position), true );
 }
 #else
 int _do_getxattr(EncFS_Context *, const string &cyName,
 	tuple<const char *, void *, size_t> data)
 {
-    return ::getxattr( cyName.c_str(), data.get<0>(), 
+    return ::getxattr( cyName.c_str(), data.get<0>(),
 	    data.get<1>(), data.get<2>());
 }
 int encfs_getxattr( const char *path, const char *name,
 	char *value, size_t size )
 {
-    return withCipherPath( "getxattr", path, _do_getxattr, 
+    return withCipherPath( "getxattr", path, _do_getxattr,
 	    make_tuple(name, (void *)value, size), true );
 }
 #endif
@@ -778,7 +782,7 @@ int _do_listxattr(EncFS_Context *, const string &cyName,
 
 int encfs_listxattr( const char *path, char *list, size_t size )
 {
-    return withCipherPath( "listxattr", path, _do_listxattr, 
+    return withCipherPath( "listxattr", path, _do_listxattr,
 	    make_tuple(list, size), true );
 }
 
@@ -799,4 +803,3 @@ int encfs_removexattr( const char *path, const char *name )
 }
 
 #endif // HAVE_XATTR
-
